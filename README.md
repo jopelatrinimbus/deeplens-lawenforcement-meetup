@@ -1,2 +1,10 @@
 # deeplens-lawenforcement-meetup
-Law enforcement application that integrate AWS Deeplens and AWS Rekognition
+Application that demonstrate integration of AWS Deeplens and AWS Rekognition
+in a law enforcement scenario
+
+## Introduction
+
+## Deployment
+
+## Author
+Jonathan Pelletier (jonathan.pelletier1@gmail.com)
