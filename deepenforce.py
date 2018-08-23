@@ -38,7 +38,7 @@ def main():
     parser.add_argument(
             '-b',
             '--bucket-name',
-            help='name of the bucket used to upload wanted subject image'
+            help='name of the bucket used to upload wanted subject image',
             required=True)
 
 
@@ -68,5 +68,10 @@ def main():
             DetectionAttributes=['ALL'])
 
     # create a Stream processor for the faces
-    rekognition.
+
+    return
+
+if __name__ == '__main__':
+    main()
+
 
