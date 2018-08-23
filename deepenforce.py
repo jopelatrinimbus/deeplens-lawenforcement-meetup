@@ -25,8 +25,8 @@ def main():
     parser.add_argument(
             '-r',
             '--role-arn',
-            help='ARN of the role giving rekognition access to '
-
+            help='ARN of the role giving rekognition access to Video Stream',
+            required=True)
 
 
     parser.add_argument(
