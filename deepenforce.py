@@ -4,144 +4,170 @@
 import argparse
 import boto3
 import logging
+import numpy as np
+import cv2
+
+from io import BytesIO
 
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-            '-v',
-            '--video-stream-arn',
-            help='ARN of the Deeplens Kinesis Video Stream. You can get it'\
-                    ' from the kinesis console'\
-                    ' (https://console.aws.amazon.com/kinesisvideo/streams)',
-            required = True)
 
-    parser.add_argument(
-            '-d',
-            '--data-stream-arn',
-            help='ARN of the Kinesis Data stream used for pushing rekognition'\
-                    ' results',
-            required=True)
-
+    DEFAULT_REFERENCE_BUCKET = 'deepenforcement-reference'
     parser.add_argument(
             '-r',
-            '--role-arn',
-            help='ARN of the role giving rekognition access to Video Stream',
-            required=True)
+            '--reference-bucket',
+            help='name of the bucket containing the reference',
+            default=DEFAULT_REFERENCE_BUCKET)
 
+    parser.add_argument(
+            '-s',
+            '--source-key',
+            required=True,
+            help='s3 key of the source image to compare against candidates')
+
+    DEFAULT_CANDIDATES_BUCKET = 'deepenforcement-candidates'
+    parser.add_argument(
+            '-c',
+            '--candidates-bucket',
+            help='name of the bucket containing the candidate images streamed from Deeplens',
+            default=DEFAULT_CANDIDATES_BUCKET)
+
+    DEFAULT_MATCHED_BUCKET = 'deepenforcement-matched'
+    parser.add_argument(
+            '-m',
+            '--matched-bucket',
+            help='name of the bucket where to move matched images',
+            default=DEFAULT_MATCHED_BUCKET)
+
+    DEFAULT_UbuckeiNMATCHED_BUCKET = 'deepenforcement-unmatched'
+    parser.add_argument(
+            '-u',
+            '--unmatched',
+            help='name of the bucket where t move the unmatched argument',
+            default=DEFAULT_UNMATCHED_BUCKET)
 
     parser.add_argument(
             '-p',
-            '--picture-file',
-            help='path to the file containing picture of wanted subject',
-            required=True)
-
-    parser.add_argument(
-            '-b',
-            '--bucket-name',
-            help='name of the bucket used to upload wanted subject image',
-            required=True)
-
-    DEFAULT_STREAM_PROCESSOR_NAME = 'deepenforcementsp'
-    parser.add_argument(
-            '-n',
-            '--name-stream-processor',
-            help='desired name of the stream processor',
-            default=DEFAULT_STREAM_PROCESSOR_NAME)
-
-    DEFAULT_THRESHOLD_FACEMATCH = 50
-    parser.add_argument(
-            '-t',
-            '--threshold-facematch',
-            help='threshold value to use for the face match (e.g: 70)',
-            type=float,
-            default=DEFAULT_THRESHOLD_FACEMATCH)
-
-    parser.add_argument(
-            '-P',
             '--profile',
-            help='Profile to use when making api calls with boto',
+            help='the profile to use with the boto3 API calls',
             default=None)
 
-    DEFAULT_REGION='us-east-1'
     parser.add_argument(
             '-R',
             '--region',
-            help='Will deploy AWS resources in this region',
-            default=DEFAULT_REGION)
+            help='region to use with API client',
+            default='us-east-1'
+            )
+
+    DEFAULT_SIMILARITY_THRESHOLD = 65
+    parser.add_argument(
+            '-S',
+            '--similarity-threshold',
+            help='similarity value beyond which faces are considered similar',
+            type=float,
+            default=DEFAULT_SIMILARITY_THRESHOLD)
+
 
     args = parser.parse_args()
 
     if args.profile:
-        boto3.setup_default_session(profile_name=args.profile)
+        boto3.setup_default_session(profile_name=args.profile, region_name=args.region)
 
-    logging.getLogger("botocore").setLevel(logging.WARNING)
-    logging.getLogger("s3transfer").setLevel(logging.WARNING)
-    logging.basicConfig(level=logging.DEBUG)
+    # make sure there is a face in the reference image
+    rekognition = boto3.client('rekognition')
+    reference_image = {
+            'S3Object': {
+                'Bucket':args.reference_bucket,
+                'Name':args.source_key
+                }
+            }
 
-    # upload the suspect image to s3
+    detect_face_reference = rekognition.detect_faces(Image=reference_image, Attributes=['ALL'])
+    if not detect_face_reference['FaceDetails']:
+        print('according to rekognition, your reference image contains no face. Try again with a new image')
+        exit(-1)
+
+    # get a list of all the candidates to compare
     s3 = boto3.client('s3')
+    content = s3.list_objects(Bucket=args.candidates_bucket)
 
-    file_key = args.picture_file.split('/')[-1]
+    has_content = 'Contents' in content
+    if not has_content:
+        print('there is no object in the candidate bucket. Please capture more images and try again')
+        exit(-2)
 
-    logging.debug("trying to upload {} to s3 bucket".format(file_key))
 
-    with open(args.picture_file, 'rb') as data:
-        s3.upload_fileobj(data, args.bucket_name, file_key)
+    candidate_keys = [ c['Key'] for c in content['Contents'] ]
 
-    # create a collection from the suspect image
-    rekognition = boto3.client('rekognition', region_name=args.region)
 
-    collection_id = file_key
+    for candidate in candidate_keys:
 
-    # make the script idempotent in between invocations
-    try:
-        rekognition.delete_collection(CollectionId=collection_id)
-    except:
-        pass
+        # make sure there is a face in our image
+        face_detection = rekognition.detect_faces(
+                Image={
+                    'S3Object': {
+                        'Bucket':args.candidates_bucket,
+                        'Name':candidate}
+                    },
+                Attributes=['ALL']
+                )
 
-    collection = rekognition.create_collection(CollectionId=collection_id)
+        if not face_detection['FaceDetails']:
+            # delete the file from the candidate bucket and move on
+            s3.delete_object(Bucket=args.candidates_bucket, Key=candidate)
+            continue
 
-    # index the face
-    face_records = rekognition.index_faces(
-            CollectionId=collection_id,
-            Image={ 'S3Object': { 'Bucket': args.bucket_name, 'Name':file_key } },
-            ExternalImageId=file_key,
-            DetectionAttributes=['ALL'])
+        # There is a face in our candiate image, compare it to the reference
+        comparison = rekognition.compare_faces(
+                SourceImage = {
+                    'S3Object': {
+                        'Bucket':args.reference_bucket,
+                        'Name':args.source_key
+                        }
+                    },
+                TargetImage = {
+                    'S3Object': {
+                        'Bucket': args.candidates_bucket,
+                        'Name': candidate
+                        }
+                    },
+                SimilarityThreshold=args.similarity_threshold)
 
-    # idempotent operation
-    try:
-        rekognition.delete_stream_processor(Name=args.name_stream_processor)
-    except:
-        pass
+        if comparison['FaceMatches']:
+            # Download the image from the bucket
+            content = s3.get_object(Bucket=args.candidates_bucket, Key=candidate)
 
-    # create a Stream processor for the faces
-    stream_processor = rekognition.create_stream_processor(
-            Input={
-                'KinesisVideoStream': {
-                    'Arn': args.video_stream_arn
-                    }
-                },
-            Output={
-                'KinesisDataStream': {
-                    'Arn': args.data_stream_arn
-                    }
-                },
-            Name=args.name_stream_processor,
-            Settings={
-                'FaceSearch': {
-                    'CollectionId':collection_id,
-                    'FaceMatchThreshold':args.threshold_facematch
-                    }
-                },
-            RoleArn=args.role_arn)
+            # transform into something we can play with
+            np_img = np.frombuffer(content['Body'].read(), np.uint8)
+            img = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
 
-    # start the stream processor
-    result = rekognition.start_stream_processor(Name=args.name_stream_processor)
-    print(result)
-    return
+            for face in comparison['FaceMatches']:
+                # draw the bounding box around the matche
+                bb = face['Face']['BoundingBox']
+
+                continue
+
+            # Upload the face to matched
+            s3.copy_object(Bucket=args.matched_bucket, Key=candidate, CopySource={'Bucket':args.candidates_bucket, 'Key':candidate})
+        else:
+            # no match: move to unmatched
+            s3.copy_object(Bucket=args.unmatchedbuckei, Key=candidate, CopySource={'Bucket':args.candidates_bucket, 'Key':candidate})
+
+
+        # remove the image from the candidate bucket
+        s3.delete_object(Bucket=args.candidates_bucket, Key=candidate)
+
+    print('analysis done')
+    eturn
 
 if __name__ == '__main__':
     main()
+    DEFAULT_MATCHED_BUCKET = 'deepenforcement-matched'
+    parser.add_argument(
+            '-m',
+            '--matched-bucket',
+            help='name of the bucket where to move matched images',
+            default=DEFAULT_MATCHED_BUCKET)
 
 
