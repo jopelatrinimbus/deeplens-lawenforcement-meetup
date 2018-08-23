@@ -1,0 +1,18 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Required resources for the DeepEnforcement application
+
+Parameters:
+    SuspectBucketName:
+        Type: String
+        Description: Name of the bucket used for uploading suspect image
+
+Resources:
+    SuspectBucket:
+        Type: AWS::S3::Bucket
+        Properties:
+            BucketName: !Ref SuspectBucketName
+    KinesisDataStream:
+        Type: AWS::Kinesis::Stream
+        Properties:
+            RetentionPeriodHours: 24
+            ShardCount: 1

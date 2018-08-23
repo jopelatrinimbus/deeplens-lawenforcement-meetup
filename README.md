@@ -17,7 +17,7 @@ is indexed.
 for the suspect face.
 6. Analysis data are pushed to a Kinesis Data stream for further processing.
 
-## Contribute
+## Environment Setup
 ```bash
 git clone https://github.com/jopelatrinimbus/deeplens-lawenforcement-meetup.git
 cd deeplens-lawenforcement-meetup
