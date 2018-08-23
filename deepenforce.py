@@ -41,6 +41,21 @@ def main():
             help='name of the bucket used to upload wanted subject image',
             required=True)
 
+    DEFAULT_STREAM_PROCESSOR_NAME = 'deepenforcementsp'
+    parser.add_argument(
+            '-n',
+            '--name-stream-processor',
+            help='desired name of the stream processor',
+            default=DEFAULT_STREAM_PROCESSOR_NAME)
+
+    DEFAULT_THRESHOLD_FACEMATCH = 50
+    parser.add_argument(
+            '-t',
+            '--threshold-facematch',
+            help='threshold value to use for the face match (e.g: 70)',
+            type=float,
+            default=DEFAULT_THRESHOLD_FACEMATCH)
+
 
     args = parser.parse_args()
 
@@ -68,7 +83,28 @@ def main():
             DetectionAttributes=['ALL'])
 
     # create a Stream processor for the faces
+    rekognition.delete_stream_processor(Name=args.name_stream_processor)
+    stream_processor = rekognition.create_stream_processor(
+            Input={
+                'KinesisVideoStream': {
+                    'Arn': args.video_stream_arn
+                    }
+                },
+            Output={
+                'KinesisDataStream': {
+                    'Arn': args.data_stream_arn
+                    }
+                },
+            Name=args.name_stream_processor,
+            Settings={
+                'FaceSearch': {
+                    'CollectionId':collection_id,
+                    'FaceMatchThreshold':args.threshold_facematch
+                    }
+                },
+            RoleArn=args.role_arn)
 
+    print(stream_processor)
     return
 
 if __name__ == '__main__':
