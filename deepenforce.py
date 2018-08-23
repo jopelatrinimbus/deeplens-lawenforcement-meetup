@@ -3,12 +3,13 @@
 
 import argparse
 import boto3
+import logging
 
 def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-            '-s',
+            '-v',
             '--video-stream-arn',
             help='ARN of the Deeplens Kinesis Video Stream. You can get it'\
                     ' from the kinesis console'\
@@ -56,34 +57,65 @@ def main():
             type=float,
             default=DEFAULT_THRESHOLD_FACEMATCH)
 
+    parser.add_argument(
+            '-P',
+            '--profile',
+            help='Profile to use when making api calls with boto',
+            default=None)
+
+    DEFAULT_REGION='us-east-1'
+    parser.add_argument(
+            '-R',
+            '--region',
+            help='Will deploy AWS resources in this region',
+            default=DEFAULT_REGION)
 
     args = parser.parse_args()
+
+    if args.profile:
+        boto3.setup_default_session(profile_name=args.profile)
+
+    logging.getLogger("botocore").setLevel(logging.WARNING)
+    logging.getLogger("s3transfer").setLevel(logging.WARNING)
+    logging.basicConfig(level=logging.DEBUG)
 
     # upload the suspect image to s3
     s3 = boto3.client('s3')
 
-    file_key = args.picture_file.split('/')[0]
+    file_key = args.picture_file.split('/')[-1]
+
+    logging.debug("trying to upload {} to s3 bucket".format(file_key))
 
     with open(args.picture_file, 'rb') as data:
-        s3.upload_fileobj(data, args.bucket, file_key)
+        s3.upload_fileobj(data, args.bucket_name, file_key)
 
     # create a collection from the suspect image
-    rekognition = boto3.client('rekognition')
+    rekognition = boto3.client('rekognition', region_name=args.region)
 
     collection_id = file_key
 
-    rekognition.delete_collection(CollectionId=collection_id)
+    # make the script idempotent in between invocations
+    try:
+        rekognition.delete_collection(CollectionId=collection_id)
+    except:
+        pass
+
     collection = rekognition.create_collection(CollectionId=collection_id)
 
     # index the face
     face_records = rekognition.index_faces(
             CollectionId=collection_id,
-            Image={ 'S3Object': { 'Bucket': args.bucket, 'Name':file_key } },
+            Image={ 'S3Object': { 'Bucket': args.bucket_name, 'Name':file_key } },
             ExternalImageId=file_key,
             DetectionAttributes=['ALL'])
 
+    # idempotent operation
+    try:
+        rekognition.delete_stream_processor(Name=args.name_stream_processor)
+    except:
+        pass
+
     # create a Stream processor for the faces
-    rekognition.delete_stream_processor(Name=args.name_stream_processor)
     stream_processor = rekognition.create_stream_processor(
             Input={
                 'KinesisVideoStream': {
@@ -104,7 +136,9 @@ def main():
                 },
             RoleArn=args.role_arn)
 
-    print(stream_processor)
+    # start the stream processor
+    result = rekognition.start_stream_processor(Name=args.name_stream_processor)
+    print(result)
     return
 
 if __name__ == '__main__':

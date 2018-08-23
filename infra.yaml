@@ -16,3 +16,10 @@ Resources:
         Properties:
             RetentionPeriodHours: 24
             ShardCount: 1
+            Name: AmazonRekognitionDeepEnforcementStream
+
+Outputs:
+    KinesisARN:
+        Description: ARN of the created kinesis stream
+        Value: !GetAtt KinesisDataStream.Arn
+
