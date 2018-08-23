@@ -22,6 +22,12 @@ def main():
                     ' results',
             required=True)
 
+    parser.add_argument(
+            '-r',
+            '--role-arn',
+            help='ARN of the role giving rekognition access to '
+
+
 
     parser.add_argument(
             '-p',
@@ -37,20 +43,6 @@ def main():
 
 
     args = parser.parse_args()
-
-    # create a data stream of the analysis of our video
-    kinesis = boto3.client('kinesis')
-
-
-
-    response = None
-    try:
-        response = client.create_stream(
-                StreamName='{}DeepEnforcementStream'.format(
-                    'AmazonRekognition'),
-                ShardCount=1)
-    except:
-        pass
 
     # upload the suspect image to s3
     s3 = boto3.client('s3')
@@ -75,5 +67,6 @@ def main():
             ExternalImageId=file_key,
             DetectionAttributes=['ALL'])
 
-    # create a Stream
+    # create a Stream processor for the faces
+    rekognition.
 
