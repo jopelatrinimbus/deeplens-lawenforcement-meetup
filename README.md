@@ -17,6 +17,15 @@ is indexed.
 for the suspect face.
 6. Analysis data are pushed to a Kinesis Data stream for further processing.
 
+## Contribute
+```bash
+git clone https://github.com/jopelatrinimbus/deeplens-lawenforcement-meetup.git
+cd deeplens-lawenforcement-meetup
+virtualenv -p python3 .deepenv
+source .deepenv/bin/activate
+pip install -r requirements.txt
+```
+
 ## Deployment
 TBD ...
 
