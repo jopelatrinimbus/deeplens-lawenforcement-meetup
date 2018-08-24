@@ -8,9 +8,9 @@ DeepEnforcement is an application that helps law enforcement find suspect
 through their cctv imagery. The workflow is as follow.
 
 1. A face recognition model is uploaded on a cctv camera (DeepLens).
-2. Deeplens runs a lambda that streams video feed to kinesis once a face is
+2. Deeplens runs a lambda that upload images to S3 once a face is
 recognized by the model.
-3. The system user uploads a picture of the wanted person on an S3 bucket.
+3. A system user uploads a picture of the wanted person on an S3 bucket.
 4. A Rekognition Collection is created from the suspect image and the face
 is indexed.
 5. A Rekognition Stream processor analyses the Kinesis Video Stream and looks

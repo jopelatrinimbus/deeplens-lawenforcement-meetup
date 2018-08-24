@@ -100,7 +100,6 @@ def main():
 
     candidate_keys = [ c['Key'] for c in content['Contents'] ]
 
-
     for candidate in tqdm(candidate_keys):
 
         # make sure there is a face in our image
