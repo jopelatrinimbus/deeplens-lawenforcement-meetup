@@ -1,25 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Required resources for the DeepEnforcement application
 
-Parameters:
-    SuspectBucketName:
-        Type: String
-        Description: Name of the bucket used for uploading suspect image
-
 Resources:
-    SuspectBucket:
+    CandidateBucket:
         Type: AWS::S3::Bucket
         Properties:
-            BucketName: !Ref SuspectBucketName
-    KinesisDataStream:
-        Type: AWS::Kinesis::Stream
+            BucketName: deepenforcement-candidates
+
+    ReferenceBucket:
+        Type: AWS::S3::Bucket
         Properties:
-            RetentionPeriodHours: 24
-            ShardCount: 1
-            Name: AmazonRekognitionDeepEnforcementStream
+            BucketName: deepenforcement-reference
 
-Outputs:
-    KinesisARN:
-        Description: ARN of the created kinesis stream
-        Value: !GetAtt KinesisDataStream.Arn
+    UnmatchedBucket:
+        Type: AWS::S3::Bucket
+        Properties:
+            BucketName: deepenforcement-unmatched
 
+    MatchedBucket:
+        Type: AWS::S3::Bucket
+        Properties:
+            BucketName: deepenforcement-matched

@@ -7,7 +7,7 @@ import logging
 import numpy as np
 import cv2
 
-from io import BytesIO
+from tqdm import tqdm
 
 def main():
 
@@ -40,7 +40,7 @@ def main():
             help='name of the bucket where to move matched images',
             default=DEFAULT_MATCHED_BUCKET)
 
-    DEFAULT_UbuckeiNMATCHED_BUCKET = 'deepenforcement-unmatched'
+    DEFAULT_UNMATCHED_BUCKET = 'deepenforcement-unmatched'
     parser.add_argument(
             '-u',
             '--unmatched',
@@ -101,7 +101,7 @@ def main():
     candidate_keys = [ c['Key'] for c in content['Contents'] ]
 
 
-    for candidate in candidate_keys:
+    for candidate in tqdm(candidate_keys):
 
         # make sure there is a face in our image
         face_detection = rekognition.detect_faces(
@@ -146,28 +146,38 @@ def main():
                 # draw the bounding box around the matche
                 bb = face['Face']['BoundingBox']
 
-                continue
+                yscale = float(img.shape[0])
+                xscale = float(img.shape[1])
 
-            # Upload the face to matched
-            s3.copy_object(Bucket=args.matched_bucket, Key=candidate, CopySource={'Bucket':args.candidates_bucket, 'Key':candidate})
+                xmin = int(bb['Left'] * xscale)
+                ymin = int(bb['Top'] * yscale)
+                xmax = int(xmin + (bb['Width'] * xscale))
+                ymax = int(ymin + ( bb['Height'] * yscale))
+
+                # draw bounding box around suspect head
+                color = (0,0,255)
+                cv2.rectangle(img, (xmin, ymin), (xmax, ymax), color, 10)
+
+                # write text tag on image
+                text_offset = 15
+                cv2.putText(img, args.source_key, (xmin, ymin-text_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+            # upload result to s3
+            ret, jpeg = cv2.imencode('.jpg', img)
+            s3.put_object(Bucket=args.matched_bucket, Body=jpeg.tobytes(), Key=candidate)
+
         else:
             # no match: move to unmatched
-            s3.copy_object(Bucket=args.unmatchedbuckei, Key=candidate, CopySource={'Bucket':args.candidates_bucket, 'Key':candidate})
+            s3.copy_object(Bucket=args.unmatched, Key=candidate, CopySource={'Bucket':args.candidates_bucket, 'Key':candidate})
 
 
         # remove the image from the candidate bucket
         s3.delete_object(Bucket=args.candidates_bucket, Key=candidate)
 
     print('analysis done')
-    eturn
+    return
 
 if __name__ == '__main__':
     main()
-    DEFAULT_MATCHED_BUCKET = 'deepenforcement-matched'
-    parser.add_argument(
-            '-m',
-            '--matched-bucket',
-            help='name of the bucket where to move matched images',
-            default=DEFAULT_MATCHED_BUCKET)
 
 
